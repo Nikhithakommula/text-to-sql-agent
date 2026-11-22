@@ -1,4 +1,6 @@
 import os
+import re
+
 from sqlalchemy import create_engine, text
 
 
@@ -10,11 +12,19 @@ engine = create_engine(f"sqlite:///{DATABASE_PATH}")
 
 def execute_sql(sql):
     try:
+        if not sql or not re.match(r"^\s*SELECT\b", sql, re.IGNORECASE):
+            raise ValueError("Only SELECT queries are allowed.")
+
+        if ";" in sql:
+            raise ValueError("Multiple SQL statements are not allowed.")
+
         with engine.connect() as connection:
+            # Prevent database modification.
+            connection.exec_driver_sql("PRAGMA query_only = ON")
+
             result = connection.execute(text(sql))
 
             rows = result.fetchall()
-
             columns = list(result.keys())
 
         return {
@@ -25,4 +35,9 @@ def execute_sql(sql):
         }
 
     except Exception as e:
-        return {"success": False, "columns": [], "rows": [], "error": str(e)}
+        return {
+            "success": False,
+            "columns": [],
+            "rows": [],
+            "error": str(e),
+        }

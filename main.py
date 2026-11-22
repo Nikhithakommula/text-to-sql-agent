@@ -9,7 +9,6 @@ def main():
     print("=" * 50)
 
     while True:
-
         question = input("\nAsk your question: ").strip()
 
         if question.lower() in ["exit", "quit", "q"]:
@@ -26,7 +25,6 @@ def main():
         print("\n" + "-" * 50)
 
         if result["success"]:
-
             print("Generated SQL:")
             print(result["sql"])
 
@@ -42,13 +40,14 @@ def main():
             print(result["answer"])
 
             print("\nStatus: SUCCESS")
+            print("Attempts:", result["attempts"])
 
         else:
-
             print("SQL Generation/Execution Failed:")
             print(result["error"])
 
             print("\nStatus: FAILED")
+            print("Attempts:", result["attempts"])
 
         print("-" * 50)
 
