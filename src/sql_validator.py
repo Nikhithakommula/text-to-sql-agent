@@ -5,11 +5,13 @@ from src.sql_executor import engine
 
 
 def validate_sql(sql):
+
     if not sql or not sql.strip():
         raise ValueError("SQL query cannot be empty.")
 
     try:
         statements = sqlglot.parse(sql, read="sqlite")
+
     except Exception as e:
         raise ValueError(f"SQL syntax error: {str(e)}")
 
@@ -35,9 +37,13 @@ def validate_sql(sql):
         if isinstance(node, forbidden):
             raise ValueError("Unsafe SQL operation detected.")
 
+        if isinstance(node, exp.Into):
+            raise ValueError("SELECT INTO operations are not allowed.")
+
     try:
         with engine.connect() as connection:
             connection.exec_driver_sql("PRAGMA query_only = ON")
+
             connection.exec_driver_sql(f"EXPLAIN QUERY PLAN {sql}").fetchall()
 
     except Exception as e:

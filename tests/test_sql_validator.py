@@ -41,3 +41,37 @@ def test_multiple_statements_are_rejected():
 def test_nonexistent_table_is_rejected():
     with pytest.raises(ValueError):
         validate_sql("SELECT * FROM UnknownTable")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT * INTO NewTable FROM Customer",
+        "PRAGMA table_info(Customer)",
+        "ATTACH DATABASE 'test.db' AS test",
+        "DETACH DATABASE test",
+    ],
+)
+def test_additional_unsafe_queries_are_rejected(sql):
+    with pytest.raises(ValueError):
+        validate_sql(sql)
+
+
+def test_select_with_join_is_allowed():
+    sql = """
+        SELECT Customer.FirstName, Invoice.Total
+        FROM Customer
+        JOIN Invoice ON Customer.CustomerId = Invoice.CustomerId
+    """
+
+    assert validate_sql(sql) is True
+
+
+def test_select_with_group_by_is_allowed():
+    sql = """
+        SELECT Country, COUNT(*)
+        FROM Customer
+        GROUP BY Country
+    """
+
+    assert validate_sql(sql) is True
