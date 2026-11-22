@@ -21,7 +21,6 @@ def validate_sql(sql):
     if not isinstance(parsed, (exp.Select, exp.Subquery, exp.Union)):
         raise ValueError("Only SELECT queries are allowed.")
 
-    # Check for data modification or other unsafe operations.
     forbidden = (
         exp.Insert,
         exp.Update,
@@ -36,16 +35,12 @@ def validate_sql(sql):
         if isinstance(node, forbidden):
             raise ValueError("Unsafe SQL operation detected.")
 
-    # Ask SQLite to validate table names, column names and SQL syntax
-    # without actually executing the SELECT query.
     try:
         with engine.connect() as connection:
             connection.exec_driver_sql("PRAGMA query_only = ON")
-
             connection.exec_driver_sql(f"EXPLAIN QUERY PLAN {sql}").fetchall()
 
     except Exception as e:
         raise ValueError(f"Database schema or query validation failed: {str(e)}")
 
     return True
-
