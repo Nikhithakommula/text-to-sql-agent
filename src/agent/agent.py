@@ -4,6 +4,30 @@ from src.sql_validator import validate_sql
 
 
 MAX_ATTEMPTS = 3
+MAX_PREVIEW_ROWS = 5
+
+
+def format_answer(columns, rows):
+
+    if not rows:
+        return "No matching records were found."
+
+    if len(rows) == 1 and len(rows[0]) == 1:
+        return f"{columns[0]}: {rows[0][0]}"
+
+    answer_lines = [f"Found {len(rows)} result(s).", "Results:"]
+
+    preview_rows = rows[:MAX_PREVIEW_ROWS]
+
+    for row in preview_rows:
+        record = ", ".join(f"{column}: {value}" for column, value in zip(columns, row))
+
+        answer_lines.append(record)
+
+    if len(rows) > MAX_PREVIEW_ROWS:
+        answer_lines.append(f"... and {len(rows) - MAX_PREVIEW_ROWS} more result(s).")
+
+    return "\n".join(answer_lines)
 
 
 def run_agent(question):
@@ -15,13 +39,11 @@ def run_agent(question):
         print(f"\nAttempt {attempt}/{MAX_ATTEMPTS}")
 
         try:
-            # Step 1: Generate SQL.
             sql = generate_sql(question, last_error)
 
             print(f"Generated SQL for attempt {attempt}:")
             print(sql)
 
-            # Step 2: Validate SQL.
             validate_sql(sql)
 
         except Exception as e:
@@ -37,32 +59,24 @@ def run_agent(question):
 
             continue
 
-        # Step 3: Execute validated SQL.
         result = execute_sql(sql)
 
         if result["success"]:
             rows = result["rows"]
+            columns = result["columns"]
 
-            if not rows:
-                answer = "No matching records were found."
-
-            elif len(rows) == 1 and len(rows[0]) == 1:
-                answer = f"Result: {rows[0][0]}"
-
-            else:
-                answer = f"Found {len(rows)} result(s)."
+            answer = format_answer(columns, rows)
 
             return {
                 "success": True,
                 "sql": sql,
-                "columns": result["columns"],
+                "columns": columns,
                 "rows": rows,
                 "answer": answer,
                 "error": None,
                 "attempts": attempt,
             }
 
-        # Step 4: Send execution error for correction.
         last_error = (
             f"Previous SQL:\n{sql}\n\n"
             f"Execution error:\n{result['error']}\n\n"
