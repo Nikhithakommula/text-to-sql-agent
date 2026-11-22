@@ -1,6 +1,50 @@
 from src.agent import run_agent
 
 
+def display_table(columns, rows):
+
+    if not columns or not rows:
+        print("No records to display.")
+        return
+
+    widths = []
+
+    for index, column in enumerate(columns):
+        values = [str(row[index]) for row in rows]
+
+        width = max(len(str(column)), max(len(value) for value in values))
+
+        widths.append(width)
+
+    separator = "+-" + "-+-".join("-" * width for width in widths) + "-+"
+
+    header = (
+        "| "
+        + " | ".join(
+            str(column).ljust(widths[index]) for index, column in enumerate(columns)
+        )
+        + " |"
+    )
+
+    print(separator)
+    print(header)
+    print(separator)
+
+    for row in rows:
+        formatted_row = (
+            "| "
+            + " | ".join(
+                str(value).ljust(widths[index]) for index, value in enumerate(row)
+            )
+            + " |"
+        )
+
+        print(formatted_row)
+
+    print(separator)
+    print(f"Total records: {len(rows)}")
+
+
 def main():
 
     print()
@@ -16,6 +60,7 @@ def main():
             break
 
         if not question:
+            print("Please enter a question.")
             continue
 
         print("\nGenerating SQL...")
@@ -30,11 +75,7 @@ def main():
 
             print("\nDatabase Result:")
 
-            if result["columns"]:
-                print(" | ".join(result["columns"]))
-
-            for row in result["rows"]:
-                print(row)
+            display_table(result["columns"], result["rows"])
 
             print("\nAnswer:")
             print(result["answer"])
