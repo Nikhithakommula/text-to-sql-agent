@@ -19,10 +19,7 @@ def get_database_schema():
     for table in inspector.get_table_names():
         columns = inspector.get_columns(table)
 
-        column_details = []
-
-        for column in columns:
-            column_details.append(f"{column['name']} ({column['type']})")
+        column_details = [f"{column['name']} ({column['type']})" for column in columns]
 
         table_info = f"Table: {table}\nColumns: {', '.join(column_details)}"
 
@@ -78,7 +75,6 @@ def clean_sql(response):
         raise ValueError("Could not find a SELECT query in model response.")
 
     sql = match.group(0).strip()
-
     sql = sql.rstrip().rstrip(";").rstrip()
 
     return sql.strip()
@@ -125,125 +121,125 @@ def generate_sql(question, error_message=None):
 
     if error_message:
         correction = f"""
-IMPORTANT: YOUR PREVIOUS SQL QUERY FAILED.
-
-PREVIOUS QUERY AND ERROR:
+PREVIOUS QUERY FAILURE:
 
 {error_message}
 
-YOU MUST FIX THE ACTUAL ERROR.
+CORRECTION INSTRUCTIONS:
 
-Before generating the new SQL:
-
-1. Read the complete database schema again.
-2. Check every table alias used in SELECT, WHERE,
-   GROUP BY, ORDER BY and JOIN conditions.
-3. Every alias must be declared in FROM or JOIN.
-4. Never use an undeclared table alias.
-5. Do not repeat the previous incorrect SQL.
-6. Use the correct table for the requested entity
-   and its attributes.
-7. Check all JOIN conditions against foreign keys.
-8. Check that the selected columns belong to the
-   intended tables.
-9. Return one corrected SQLite SELECT query only.
+1. Identify the exact cause of the previous failure.
+2. Read the database schema again.
+3. Do not repeat the previous incorrect query.
+4. Verify every table and column against the schema.
+5. Verify every alias is declared in FROM or JOIN.
+6. Verify every JOIN uses valid columns.
+7. Do not invent tables or columns.
+8. Check calculations and units carefully.
+9. Return one complete corrected SQLite SELECT query.
 """
 
     prompt = f"""
 You are an expert SQLite Text-to-SQL assistant.
 
-Convert the user's natural-language question into
-exactly one valid SQLite SELECT query.
+Convert the user's question into one correct SQLite SELECT query.
 
-DATABASE SCHEMA:
+ACTUAL DATABASE SCHEMA:
 
 {schema}
 
-IMPORTANT SQL GENERATION RULES:
+STRICT SCHEMA RULES:
 
-1. Use only tables and columns present in the schema.
-2. Never invent table names or column names.
-3. Follow actual foreign-key relationships for JOINs.
-4. Use COUNT, SUM, AVG, MIN and MAX when appropriate.
-5. Use GROUP BY for category-based results.
-6. Use ORDER BY when ranking or sorting is requested.
-7. Use LIMIT only when the user requests top N,
-   bottom N, highest or lowest records.
-8. Use valid SQLite date functions.
-9. Generate only one SELECT query.
-10. Never generate data modification statements.
-11. Do not include explanations or Markdown code fences.
-12. Every table alias must be declared in FROM or JOIN.
-13. Verify that every selected column belongs to
-    the correct table.
+1. Use only tables and columns listed in the schema.
+2. Never invent tables, columns, or relationships.
+3. Every alias must be declared in FROM or JOIN.
+4. Verify every selected column belongs to its table.
+5. Prefer simple SQL and avoid unnecessary JOINs.
+6. Return one complete SELECT query.
+
+IMPORTANT CHINOOK DATABASE FACTS:
+
+1. Customer:
+   CustomerId, FirstName, LastName, Country.
+
+2. There is NO Country table.
+   Customer.Country is a text column.
+
+3. Invoice:
+   InvoiceId, CustomerId, Total, InvoiceDate.
+
+4. Artist:
+   ArtistId, Name.
+
+5. Album:
+   AlbumId, Title, ArtistId.
+
+6. Track:
+   TrackId, Name, AlbumId, GenreId, Milliseconds, UnitPrice.
+
+7. InvoiceLine:
+   InvoiceId, TrackId, UnitPrice, Quantity.
 
 UNIT AND CALCULATION RULES:
 
-1. Track.Milliseconds stores duration in milliseconds.
-2. Convert milliseconds to seconds using / 1000.0.
-3. Convert milliseconds to minutes using / 60000.0.
-4. For average track duration in minutes,
-   use AVG(Track.Milliseconds) / 60000.0.
-5. For customer spending, use Invoice.Total.
-6. For total revenue, use SUM(Invoice.Total).
+Track.Milliseconds stores duration in milliseconds.
 
-IMPORTANT CHINOOK DATABASE RULES:
+IMPORTANT:
+When the user asks for average track duration in MINUTES,
+you MUST use:
 
-1. To count all tracks:
-   Count Track.TrackId directly from Track.
-   Do not join InvoiceLine or PlaylistTrack.
+AVG(Track.Milliseconds) / 60000.0
 
-2. To count purchased track entries:
-   Use InvoiceLine.TrackId.
+Do NOT divide by 1000.0 for minutes.
 
-3. To count albums by artist:
-   Join Artist and Album using ArtistId.
+When the user asks for average track duration in SECONDS,
+use:
 
-4. To find the artist with the most albums:
-   Count Album.AlbumId and select Artist.Name.
+AVG(Track.Milliseconds) / 1000.0
 
-5. To count customers:
-   Count Customer.CustomerId.
+When the user asks for total or individual duration in minutes,
+use:
 
-6. To calculate customer spending:
-   Join Customer and Invoice using CustomerId.
-   Calculate SUM(Invoice.Total).
+Track.Milliseconds / 60000.0
 
-7. To calculate total revenue:
-   Use SUM(Invoice.Total) from Invoice.
+EXAMPLE:
 
-8. To count tracks by genre:
-   Join Track and Genre using GenreId.
-   Count Track.TrackId.
+Question:
+What is the average duration of all tracks in minutes?
 
-9. CUSTOMER COUNTRY ANALYSIS:
-   When asked for customer counts by country:
-   - Use Customer.Country.
-   - Group by Customer.Country.
-   - Count Customer.CustomerId.
-   - Do not use Employee.Country.
-   - Do not join Employee unless explicitly required.
+Correct SQL:
+SELECT AVG(Milliseconds) / 60000.0 AS AverageDurationMinutes
+FROM Track;
 
-10. GENERAL ENTITY ATTRIBUTE RULE:
-    Identify the main entity in the user's question.
-    Use attributes belonging to that entity.
-    Do not use a similarly named column from a
-    related table unless explicitly requested.
+The expected result is approximately 6.56 minutes.
 
-11. ENTITY COUNTING RULE:
-    When asked for the total number of records
-    belonging to an entity, count its primary key
-    directly from that entity's table.
-    Avoid unnecessary JOINs.
+Other calculation rules:
 
-QUERY REQUIREMENTS:
+- Customer spending: SUM(Invoice.Total).
+- Total revenue: SUM(Invoice.Total) from Invoice.
+- Total tracks: COUNT(Track.TrackId) from Track.
+- Purchased track entries: COUNT(InvoiceLine.TrackId).
+- Customer counts by country: GROUP BY Customer.Country.
+- Tracks by genre: JOIN Track and Genre using GenreId.
+- Albums by artist: JOIN Artist and Album using ArtistId.
 
-- Select only columns needed to answer the question.
-- Use meaningful aliases for calculated columns.
-- Avoid unnecessary JOINs.
-- Ensure aggregation matches the requested entity.
-- Verify JOIN conditions and aliases.
-- Ensure the SQL answers the exact user question.
+QUERY RULES:
+
+1. Use COUNT, SUM, AVG, MIN and MAX appropriately.
+2. Use GROUP BY for category-based aggregation.
+3. Use ORDER BY for ranking.
+4. Use LIMIT for top N and bottom N.
+5. Use correct SQLite syntax.
+6. Avoid unnecessary joins and duplicate counting.
+7. Check calculation units before returning the query.
+
+FINAL VERIFICATION:
+
+- All tables and columns exist.
+- All aliases are declared.
+- JOIN conditions are valid.
+- Aggregations are correct.
+- Units match the user's requested units.
+- The query answers the exact question.
 
 {correction}
 
