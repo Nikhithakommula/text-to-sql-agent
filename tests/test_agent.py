@@ -13,7 +13,11 @@ def successful_result(columns=None, rows=None):
 def test_agent_successful_execution(monkeypatch):
 
     monkeypatch.setattr(
-        agent, "generate_sql", lambda question, error: "SELECT COUNT(*) FROM Customer"
+        agent,
+        "generate_sql",
+        lambda question, error_message=None, schema=None: (
+            "SELECT COUNT(*) FROM Customer"
+        ),
     )
 
     monkeypatch.setattr(agent, "validate_sql", lambda sql: True)
@@ -36,7 +40,7 @@ def test_agent_retries_after_validation_failure(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error):
+    def generate(question, error_message=None, schema=None):
         attempts["count"] += 1
         return f"SELECT {attempts['count']} FROM Customer"
 
@@ -61,7 +65,7 @@ def test_agent_retries_after_execution_failure(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error):
+    def generate(question, error_message=None, schema=None):
         attempts["count"] += 1
         return f"SELECT {attempts['count']} FROM Customer"
 
@@ -91,7 +95,7 @@ def test_agent_stops_after_max_validation_attempts(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error):
+    def generate(question, error_message=None, schema=None):
         attempts["count"] += 1
         return "SELECT InvalidColumn FROM Customer"
 
@@ -113,7 +117,7 @@ def test_agent_stops_after_max_execution_attempts(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error):
+    def generate(question, error_message=None, schema=None):
         attempts["count"] += 1
         return "SELECT * FROM Customer"
 

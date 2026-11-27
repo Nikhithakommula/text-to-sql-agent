@@ -1,8 +1,8 @@
 # Text-to-SQL Agent
 
-An AI-powered database assistant that converts natural-language questions into SQL queries and retrieves answers from a relational database.
+An agentic AI-powered database assistant that converts natural-language questions into SQL queries and retrieves answers from a relational database.
 
-The project uses a locally running LLM through Ollama to understand user questions, generate SQL queries based on the database schema, execute them, and present the results in a readable format.
+The project uses a locally running LLM through Ollama, LangGraph for workflow orchestration, SQLGlot for SQL validation, and SQLAlchemy for database execution. Users can interact with the system through a command-line interface, Streamlit web application, or FastAPI REST API.
 
 ## Project Overview
 
@@ -19,30 +19,33 @@ How many customers are there?
 Generated SQL:
 
 ```sql
-SELECT COUNT(*) FROM Customer;
+SELECT COUNT(CustomerId) FROM Customer
 ```
 
 Result:
 
 ```text
-Customer count: 59
+COUNT(CustomerId): 59
 ```
 
 The system inspects the actual database schema before generating queries, helping the LLM use available tables and columns.
 
-## Current Features
+## Features
 
-- Natural-language question input through a command-line interface.
+- Natural-language question processing.
 - Automatic database schema inspection.
-- SQL generation using the local Llama 3.2 (3B) model.
-- Schema-aware prompts to reduce invalid table and column references.
+- Local LLM integration using Ollama and Llama 3.2 (3B).
+- Schema-aware SQL generation.
 - SQL parsing and validation using SQLGlot.
 - SELECT-only query restrictions and protection against multiple SQL statements.
 - SQL execution using SQLAlchemy and SQLite.
-- Automatic SQL regeneration when validation or execution fails.
+- Automatic error detection and SQL regeneration.
 - Up to three attempts for query generation and correction.
-- Readable result formatting with column names and limited row previews.
-- Automated tests for database connectivity, SQL validation, execution, and agent workflows.
+- Agent workflow orchestration using LangGraph.
+- Interactive web interface using Streamlit.
+- REST API endpoints using FastAPI.
+- Automatic result formatting.
+- Automated testing using Pytest.
 
 ## Technology Stack
 
@@ -51,9 +54,14 @@ The system inspects the actual database schema before generating queries, helpin
 | Python | Core development |
 | Ollama | Local LLM execution |
 | Llama 3.2 (3B) | Natural-language to SQL generation |
-| SQLAlchemy | Database connection and query execution |
+| LangGraph | Agent workflow orchestration |
+| LangChain | LLM integration |
+| SQLAlchemy | Database connection and execution |
 | SQLite | Relational database |
 | SQLGlot | SQL parsing and validation |
+| Streamlit | Interactive web interface |
+| FastAPI | REST API development |
+| Uvicorn | API server |
 | Pytest | Automated testing |
 
 ## Project Structure
@@ -84,10 +92,13 @@ text-sql-agent/
 │
 ├── tests/
 │   ├── test_agent.py
+│   ├── test_api.py
 │   ├── test_database.py
 │   ├── test_sql_executor.py
 │   └── test_sql_validator.py
 │
+├── app.py
+├── api.py
 ├── main.py
 ├── requirements.txt
 ├── .gitignore
@@ -96,7 +107,7 @@ text-sql-agent/
 
 ## Database
 
-The project currently uses the **Chinook SQLite sample database**.
+The project uses the **Chinook SQLite sample database**.
 
 It contains 11 tables:
 
@@ -112,19 +123,98 @@ It contains 11 tables:
 - Playlist
 - PlaylistTrack
 
-The agent inspects the database schema and uses the available tables and columns when generating SQL queries.
+The agent dynamically inspects the database schema and uses the available tables, columns, and relationships when generating SQL queries.
 
-## How It Works
+## Agent Workflow
 
-1. **User Input:** The user enters a question in natural language.
-2. **Schema Inspection:** The system retrieves database schema information.
-3. **SQL Generation:** The local LLM generates a SQL query based on the question and schema.
-4. **SQL Validation:** SQLGlot checks the query, while additional checks restrict unsafe operations.
-5. **Query Execution:** Valid queries are executed against the SQLite database.
-6. **Error Handling:** If validation or execution fails, the error is passed back for another SQL generation attempt.
-7. **Result Formatting:** The retrieved records are formatted into a readable answer.
+The agent uses LangGraph to coordinate the following steps:
 
-The agent allows up to three attempts to generate and execute a valid query.
+1. **Schema Retrieval:** Retrieves the database schema.
+2. **SQL Generation:** Uses the local LLM to generate SQL based on the user's question and database schema.
+3. **SQL Validation:** Validates SQL syntax and checks database compatibility and safety.
+4. **Query Execution:** Executes valid SQL queries against SQLite.
+5. **Error Handling:** Sends validation or execution errors back for SQL correction.
+6. **Answer Formatting:** Converts database results into readable answers.
+
+The workflow supports up to three attempts to generate and execute a valid query.
+
+## Application Interfaces
+
+### 1. Command-Line Interface
+
+Run the application:
+
+```bash
+python main.py
+```
+
+Enter natural-language questions in the terminal.
+
+### 2. Streamlit Web Application
+
+Start the Streamlit interface:
+
+```bash
+python -m streamlit run app.py
+```
+
+Open:
+
+```text
+http://localhost:8501
+```
+
+Users can enter questions, view generated SQL, check execution status, and inspect database results.
+
+### 3. FastAPI REST API
+
+Start the API server:
+
+```bash
+python -m uvicorn api:app --reload
+```
+
+API base URL:
+
+```text
+http://127.0.0.1:8000
+```
+
+Interactive API documentation:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+**Available Endpoints**
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/` | API home |
+| GET | `/health` | Health check |
+| POST | `/ask` | Submit a natural-language database question |
+
+**Example API Request**
+
+```json
+{
+  "question": "How many customers are there?"
+}
+```
+
+**Example API Response**
+
+```json
+{
+  "success": true,
+  "sql": "SELECT COUNT(CustomerId) FROM Customer",
+  "columns": ["COUNT(CustomerId)"],
+  "rows": [[59]],
+  "answer": "COUNT(CustomerId): 59",
+  "attempts": 1,
+  "error": null
+}
+```
 
 ## Setup and Installation
 
@@ -169,13 +259,25 @@ Make sure the Ollama service is running before starting the application.
 
 ### 5. Run the application
 
+Choose one of the available interfaces:
+
+**CLI**
+
 ```bash
 python main.py
 ```
 
-Enter a natural-language question when prompted.
+**Streamlit**
 
-Type `exit`, `quit`, or `q` to close the application.
+```bash
+python -m streamlit run app.py
+```
+
+**FastAPI**
+
+```bash
+python -m uvicorn api:app --reload
+```
 
 ## Example Questions
 
@@ -201,28 +303,39 @@ Run the complete test suite:
 python -m pytest -v
 ```
 
-The project currently includes **42 automated tests** covering:
+**Current Test Results: 47 Passed**
+
+The automated tests cover:
 
 - Database connectivity and schema inspection.
 - SQL query validation and safety checks.
 - SQL execution and error handling.
 - Agent execution and retry workflows.
 - Result formatting.
+- API endpoints and request validation.
 
 ## Current Development Status
 
-The project currently has a working command-line implementation with local LLM-based SQL generation, database querying, validation, retry handling, and automated testing.
+The project currently includes:
 
-SQL execution and validation do not guarantee that every generated query is semantically correct. Improving query accuracy and handling more complex questions remain ongoing goals.
+- Working command-line interface.
+- Local LLM-based SQL generation.
+- LangGraph-based agent workflow.
+- SQL validation and automatic correction.
+- SQLite database integration.
+- Interactive Streamlit web interface.
+- FastAPI REST API.
+- 47 passing automated tests.
 
-## Planned Improvements
+SQL validation and successful execution do not guarantee that every generated query is semantically correct. Improving query accuracy and handling more complex questions remain ongoing goals.
 
-- Implement a structured agent workflow using LangGraph.
+## Future Improvements
+
 - Improve SQL generation and semantic accuracy.
-- Strengthen automatic SQL correction and error handling.
-- Develop an interactive Streamlit interface.
-- Build a REST API using FastAPI.
-- Expand testing with more complex natural-language queries.
+- Support more complex database queries.
+- Expand testing with additional databases and questions.
+- Improve the user interface and query history.
+- Add result export capabilities.
 
 ## Project Goal
 

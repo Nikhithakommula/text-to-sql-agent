@@ -113,9 +113,10 @@ def validate_sql(sql):
     return True
 
 
-def generate_sql(question, error_message=None):
+def generate_sql(question, error_message=None, schema=None):
 
-    schema = get_database_schema()
+    if schema is None:
+        schema = get_database_schema()
 
     correction = ""
 
