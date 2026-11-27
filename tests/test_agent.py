@@ -1,3 +1,4 @@
+
 import src.agent.agent as agent
 
 
@@ -15,7 +16,7 @@ def test_agent_successful_execution(monkeypatch):
     monkeypatch.setattr(
         agent,
         "generate_sql",
-        lambda question, error_message=None, schema=None: (
+        lambda question, error_message=None, schema=None, previous_sql=None: (
             "SELECT COUNT(*) FROM Customer"
         ),
     )
@@ -23,7 +24,9 @@ def test_agent_successful_execution(monkeypatch):
     monkeypatch.setattr(agent, "validate_sql", lambda sql: True)
 
     monkeypatch.setattr(
-        agent, "execute_sql", lambda sql: successful_result(["Total"], [(59,)])
+        agent,
+        "execute_sql",
+        lambda sql: successful_result(["Total"], [(59,)])
     )
 
     result = agent.run_agent("How many customers are there?")
@@ -40,7 +43,12 @@ def test_agent_retries_after_validation_failure(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error_message=None, schema=None):
+    def generate(
+        question,
+        error_message=None,
+        schema=None,
+        previous_sql=None,
+    ):
         attempts["count"] += 1
         return f"SELECT {attempts['count']} FROM Customer"
 
@@ -51,7 +59,9 @@ def test_agent_retries_after_validation_failure(monkeypatch):
     monkeypatch.setattr(agent, "generate_sql", generate)
     monkeypatch.setattr(agent, "validate_sql", validate)
     monkeypatch.setattr(
-        agent, "execute_sql", lambda sql: successful_result(["Total"], [(59,)])
+        agent,
+        "execute_sql",
+        lambda sql: successful_result(["Total"], [(59,)])
     )
 
     result = agent.run_agent("Test validation retry")
@@ -61,11 +71,58 @@ def test_agent_retries_after_validation_failure(monkeypatch):
     assert attempts["count"] == 2
 
 
+def test_agent_passes_previous_sql_during_retry(monkeypatch):
+
+    received_previous_sql = []
+
+    def generate(
+        question,
+        error_message=None,
+        schema=None,
+        previous_sql=None,
+    ):
+        received_previous_sql.append(previous_sql)
+
+        if len(received_previous_sql) == 1:
+            return "SELECT InvalidColumn FROM Customer"
+
+        return "SELECT COUNT(*) FROM Customer"
+
+    def validate(sql):
+        if "InvalidColumn" in sql:
+            raise ValueError("no such column: InvalidColumn")
+
+        return True
+
+    monkeypatch.setattr(agent, "generate_sql", generate)
+    monkeypatch.setattr(agent, "validate_sql", validate)
+    monkeypatch.setattr(
+        agent,
+        "execute_sql",
+        lambda sql: successful_result(["Total"], [(59,)])
+    )
+
+    result = agent.run_agent("How many customers are there?")
+
+    assert result["success"] is True
+    assert result["attempts"] == 2
+
+    assert received_previous_sql == [
+        None,
+        "SELECT InvalidColumn FROM Customer",
+    ]
+
+
 def test_agent_retries_after_execution_failure(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error_message=None, schema=None):
+    def generate(
+        question,
+        error_message=None,
+        schema=None,
+        previous_sql=None,
+    ):
         attempts["count"] += 1
         return f"SELECT {attempts['count']} FROM Customer"
 
@@ -95,7 +152,12 @@ def test_agent_stops_after_max_validation_attempts(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error_message=None, schema=None):
+    def generate(
+        question,
+        error_message=None,
+        schema=None,
+        previous_sql=None,
+    ):
         attempts["count"] += 1
         return "SELECT InvalidColumn FROM Customer"
 
@@ -117,7 +179,12 @@ def test_agent_stops_after_max_execution_attempts(monkeypatch):
 
     attempts = {"count": 0}
 
-    def generate(question, error_message=None, schema=None):
+    def generate(
+        question,
+        error_message=None,
+        schema=None,
+        previous_sql=None,
+    ):
         attempts["count"] += 1
         return "SELECT * FROM Customer"
 

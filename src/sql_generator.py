@@ -1,3 +1,4 @@
+
 import os
 import re
 import subprocess
@@ -19,7 +20,10 @@ def get_database_schema():
     for table in inspector.get_table_names():
         columns = inspector.get_columns(table)
 
-        column_details = [f"{column['name']} ({column['type']})" for column in columns]
+        column_details = [
+            f"{column['name']} ({column['type']})"
+            for column in columns
+        ]
 
         table_info = f"Table: {table}\nColumns: {', '.join(column_details)}"
 
@@ -33,7 +37,8 @@ def get_database_schema():
                 target_columns = ", ".join(fk["referred_columns"])
 
                 relationships.append(
-                    f"{source_columns} -> {fk['referred_table']}.{target_columns}"
+                    f"{source_columns} -> "
+                    f"{fk['referred_table']}.{target_columns}"
                 )
 
             table_info += "\nForeign Keys: " + "; ".join(relationships)
@@ -65,14 +70,25 @@ def clean_sql(response):
 
     response = response.strip()
 
-    response = re.sub(r"```(?:sql)?", "", response, flags=re.IGNORECASE)
+    response = re.sub(
+        r"```(?:sql)?",
+        "",
+        response,
+        flags=re.IGNORECASE
+    )
 
     response = response.replace("```", "").strip()
 
-    match = re.search(r"\bSELECT\b.*", response, flags=re.IGNORECASE | re.DOTALL)
+    match = re.search(
+        r"\bSELECT\b.*",
+        response,
+        flags=re.IGNORECASE | re.DOTALL
+    )
 
     if not match:
-        raise ValueError("Could not find a SELECT query in model response.")
+        raise ValueError(
+            "Could not find a SELECT query in model response."
+        )
 
     sql = match.group(0).strip()
     sql = sql.rstrip().rstrip(";").rstrip()
@@ -107,13 +123,22 @@ def validate_sql(sql):
     ]
 
     for word in forbidden:
-        if re.search(r"\b" + word + r"\b", normalized, flags=re.IGNORECASE):
+        if re.search(
+            r"\b" + word + r"\b",
+            normalized,
+            flags=re.IGNORECASE
+        ):
             raise ValueError(f"Unsafe SQL operation detected: {word}")
 
     return True
 
 
-def generate_sql(question, error_message=None, schema=None):
+def generate_sql(
+    question,
+    error_message=None,
+    schema=None,
+    previous_sql=None
+):
 
     if schema is None:
         schema = get_database_schema()
@@ -126,23 +151,27 @@ PREVIOUS QUERY FAILURE:
 
 {error_message}
 
+PREVIOUS SQL QUERY:
+
+{previous_sql if previous_sql else "Not available"}
+
 CORRECTION INSTRUCTIONS:
 
-1. Identify the exact cause of the previous failure.
-2. Read the database schema again.
-3. Do not repeat the previous incorrect query.
+1. Identify what was wrong with the previous SQL query.
+2. Use the actual database schema to correct it.
+3. Do not repeat the same incorrect query.
 4. Verify every table and column against the schema.
 5. Verify every alias is declared in FROM or JOIN.
 6. Verify every JOIN uses valid columns.
 7. Do not invent tables or columns.
-8. Check calculations and units carefully.
+8. Check aggregation functions and calculation units.
 9. Return one complete corrected SQLite SELECT query.
 """
 
     prompt = f"""
 You are an expert SQLite Text-to-SQL assistant.
 
-Convert the user's question into one correct SQLite SELECT query.
+Convert the user's question into one accurate SQLite SELECT query.
 
 ACTUAL DATABASE SCHEMA:
 
@@ -165,55 +194,159 @@ IMPORTANT CHINOOK DATABASE FACTS:
 2. There is NO Country table.
    Customer.Country is a text column.
 
-3. Invoice:
+3. There is NO CustomerName column.
+   To display a customer's name, use FirstName and LastName.
+
+4. Invoice:
    InvoiceId, CustomerId, Total, InvoiceDate.
 
-4. Artist:
+5. Artist:
    ArtistId, Name.
 
-5. Album:
+6. Album:
    AlbumId, Title, ArtistId.
 
-6. Track:
+7. Track:
    TrackId, Name, AlbumId, GenreId, Milliseconds, UnitPrice.
 
-7. InvoiceLine:
+8. Genre:
+   GenreId, Name.
+
+9. InvoiceLine:
    InvoiceId, TrackId, UnitPrice, Quantity.
 
 UNIT AND CALCULATION RULES:
 
 Track.Milliseconds stores duration in milliseconds.
 
-IMPORTANT:
-When the user asks for average track duration in MINUTES,
-you MUST use:
+Average track duration in minutes:
 
 AVG(Track.Milliseconds) / 60000.0
 
-Do NOT divide by 1000.0 for minutes.
-
-When the user asks for average track duration in SECONDS,
-use:
+Average track duration in seconds:
 
 AVG(Track.Milliseconds) / 1000.0
 
-When the user asks for total or individual duration in minutes,
-use:
+Individual or total track duration in minutes:
 
 Track.Milliseconds / 60000.0
 
-EXAMPLE:
+Do not confuse seconds and minutes.
+
+AGGREGATION RULES:
+
+1. "How many" or "count" means COUNT().
+2. "Total", "revenue", or "spending" means SUM().
+3. "Average" or "mean" means AVG().
+4. "Longest" or "highest" means finding the maximum value.
+5. "Each", "per", or "by category" usually requires GROUP BY.
+6. For top N results, use ORDER BY and LIMIT.
+7. Use the aggregation that directly matches the user's question.
+
+IMPORTANT QUERY EXAMPLES:
+
+Example 1:
+
+Question:
+How many tracks are available in each genre?
+
+Correct SQL:
+SELECT
+    Genre.Name AS GenreName,
+    COUNT(Track.TrackId) AS TrackCount
+FROM Genre
+LEFT JOIN Track ON Genre.GenreId = Track.GenreId
+GROUP BY Genre.GenreId, Genre.Name
+ORDER BY TrackCount DESC;
+
+Important:
+This question asks for a COUNT, not an AVG.
+
+Example 2:
+
+Question:
+List the customers from India.
+
+Correct SQL:
+SELECT FirstName, LastName
+FROM Customer
+WHERE Country = 'India';
+
+Important:
+Use FirstName and LastName.
+Never use a CustomerName column.
+
+Example 3:
+
+Question:
+Which customers have the highest total spending?
+
+Correct SQL:
+SELECT
+    Customer.FirstName,
+    Customer.LastName,
+    SUM(Invoice.Total) AS TotalSpending
+FROM Customer
+JOIN Invoice
+    ON Customer.CustomerId = Invoice.CustomerId
+GROUP BY Customer.CustomerId, Customer.FirstName, Customer.LastName
+ORDER BY TotalSpending DESC
+LIMIT 5;
+
+Example 4:
+
+Question:
+What is the total revenue generated from all invoices?
+
+Correct SQL:
+SELECT SUM(Total) AS TotalRevenue
+FROM Invoice;
+
+Example 5:
+
+Question:
+Find the longest track and show its duration in minutes.
+
+Correct SQL:
+SELECT
+    Name,
+    Milliseconds / 60000.0 AS DurationMinutes
+FROM Track
+ORDER BY Milliseconds DESC
+LIMIT 1;
+
+Example 6:
 
 Question:
 What is the average duration of all tracks in minutes?
+
+Example 7:
+
+Question:
+Which artist has the most albums?
+
+Correct SQL:
+SELECT
+    Artist.Name AS ArtistName,
+    COUNT(Album.AlbumId) AS AlbumCount
+FROM Artist
+JOIN Album
+    ON Artist.ArtistId = Album.ArtistId
+GROUP BY Artist.ArtistId, Artist.Name
+ORDER BY AlbumCount DESC
+LIMIT 1;
+
+Important:
+AlbumId belongs to the Album table, not the Artist table.
+Always use COUNT(Album.AlbumId), never COUNT(Artist.AlbumId).
 
 Correct SQL:
 SELECT AVG(Milliseconds) / 60000.0 AS AverageDurationMinutes
 FROM Track;
 
-The expected result is approximately 6.56 minutes.
+Expected result is approximately 6.56 minutes.
 
-Other calculation rules:
+OTHER CALCULATION RULES:
 
 - Customer spending: SUM(Invoice.Total).
 - Total revenue: SUM(Invoice.Total) from Invoice.
@@ -232,15 +365,17 @@ QUERY RULES:
 5. Use correct SQLite syntax.
 6. Avoid unnecessary joins and duplicate counting.
 7. Check calculation units before returning the query.
+8. Answer exactly what the user asks. Do not substitute a different calculation.
 
 FINAL VERIFICATION:
 
-- All tables and columns exist.
-- All aliases are declared.
-- JOIN conditions are valid.
-- Aggregations are correct.
-- Units match the user's requested units.
-- The query answers the exact question.
+- Does the SQL answer the actual question?
+- Is the correct aggregation function used?
+- Do all tables and columns exist?
+- Are all aliases declared?
+- Are JOIN conditions valid?
+- Are GROUP BY and ORDER BY used correctly?
+- Do calculation units match the requested units?
 
 {correction}
 

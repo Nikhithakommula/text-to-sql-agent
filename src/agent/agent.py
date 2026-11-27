@@ -1,3 +1,4 @@
+
 import re
 from typing import TypedDict
 
@@ -16,6 +17,7 @@ class AgentState(TypedDict, total=False):
     question: str
     schema: str
     sql: str
+    previous_sql: str
     error: str
     attempts: int
     columns: list
@@ -52,9 +54,12 @@ def generate_query_node(state: AgentState):
 
     try:
         sql = generate_sql(
-            state["question"],
-            state.get("error"),
-            state["schema"],
+            question=state["question"],
+            error_message=state.get("error"),
+            schema=state["schema"],
+            previous_sql=(
+                state.get("previous_sql") or state.get("sql")
+            ),
         )
 
         if not sql:
@@ -100,6 +105,7 @@ def validate_query_node(state: AgentState):
         print(error)
 
         return {
+            "previous_sql": state.get("sql"),
             "valid": False,
             "error": error,
             "success": False,
@@ -117,6 +123,7 @@ def execute_query_node(state: AgentState):
             print(f"SQL execution failed: {error}")
 
             return {
+                "previous_sql": state.get("sql"),
                 "success": False,
                 "columns": [],
                 "rows": [],
@@ -137,6 +144,7 @@ def execute_query_node(state: AgentState):
         print(error)
 
         return {
+            "previous_sql": state.get("sql"),
             "success": False,
             "columns": [],
             "rows": [],
@@ -187,7 +195,8 @@ def format_answer(columns, rows):
 
     for row in rows[:MAX_PREVIEW_ROWS]:
         row_data = ", ".join(
-            f"{column}: {format_value(value)}" for column, value in zip(columns, row)
+            f"{column}: {format_value(value)}"
+            for column, value in zip(columns, row)
         )
 
         answer.append(row_data)
@@ -318,6 +327,7 @@ def run_agent(question):
         "question": question,
         "schema": "",
         "sql": None,
+        "previous_sql": None,
         "error": None,
         "attempts": 0,
         "columns": [],
